@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>总部物料管理系统 | Supabase 实时同步版</title>
+    <!-- Supabase JS SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- SheetJS 处理 Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+    <style>
+        * { box-sizing: border-box; font-family: system-ui, 'Segoe UI', 'Roboto', 'Noto Sans', sans-serif; }
+        body { background: #f0f4f8; margin: 0; padding: 24px 20px; }
+        .container { max-width: 1600px; margin: 0 auto; }
+        .card { background: white; border-radius: 24px; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05); padding: 20px 24px; margin-bottom: 28px; border: 1px solid #e9eef3; }
+        .card-header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; margin-bottom: 18px; border-bottom: 2px solid #eef2f6; padding-bottom: 12px; }
+        .card-header h2 { font-size: 1.5rem; font-weight: 600; color: #1a2c3e; margin: 0; display: flex; align-items: center; gap: 10px; }
+        .badge { background: #eef2ff; color: #1e4b7a; padding: 4px 10px; border-radius: 40px; font-size: 0.75rem; font-weight: 500; }
+        .form-grid { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; margin-bottom: 16px; }
+        .form-field { flex: 1; min-width: 140px; }
+        .form-field label { display: block; font-size: 0.7rem; font-weight: 600; color: #2c5a7a; margin-bottom: 6px; letter-spacing: 0.3px; }
+        input, select, button { border-radius: 14px; border: 1px solid #cfdfed; padding: 10px 14px; font-size: 0.9rem; width: 100%; transition: 0.2s; background: white; }
+        input:focus, select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.2); }
+        button { background: #1e6f3f; color: white; font-weight: 600; border: none; cursor: pointer; transition: 0.2s; }
+        button:hover { background: #0f5a34; transform: translateY(-1px); }
+        .btn-outline { background: white; border: 1px solid #b9cfdf; color: #1f5e8c; box-shadow: none; }
+        .btn-outline:hover { background: #f0f6fe; transform: none; }
+        .btn-excel { background: #1e6f3f; border: none; color: white; }
+        .btn-excel:hover { background: #0f5a34; }
+        .btn-sm { padding: 6px 12px; font-size: 0.75rem; }
+        .action-buttons { display: flex; gap: 12px; flex-wrap: wrap; justify-content: flex-end; margin-top: 8px; }
+        .table-wrapper { overflow-x: auto; border-radius: 20px; margin-top: 12px; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.8rem; min-width: 800px; }
+        th { text-align: left; padding: 14px 12px; background-color: #f8fafc; color: #1e4a76; font-weight: 600; border-bottom: 1px solid #e2e8f0; }
+        td { padding: 12px 12px; border-bottom: 1px solid #ecf3f9; vertical-align: middle; }
+        .badge-type { display: inline-block; padding: 4px 12px; border-radius: 40px; font-size: 0.7rem; font-weight: 600; }
+        .badge-in { background: #dcfce7; color: #15803d; }
+        .badge-out { background: #ffe4e2; color: #b91c1c; }
+        .stock-cell { font-weight: 700; font-size: 1rem; }
+        .stock-high { color: #0e7c32; }
+        .stock-low { color: #c2410c; }
+        .action-btn { background: none; border: none; cursor: pointer; font-size: 0.75rem; padding: 6px 12px; border-radius: 20px; width: auto; font-weight: 500; transition: 0.1s; margin: 0 2px; }
+        .edit-btn, .delete-btn { display: none; }
+        .ship-btn { background: #e6f7e6; color: #0e7c32; }
+        .empty-message { text-align: center; padding: 40px; color: #6c86a3; font-style: italic; }
+        .info-note { background: #eef3fa; border-left: 4px solid #3b82f6; padding: 8px 16px; border-radius: 16px; font-size: 0.75rem; margin-top: 12px; color: #1e3a5f; }
+        footer { text-align: center; font-size: 0.7rem; color: #6c86a3; margin-top: 30px; }
+        .flex-between { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000; }
+        .modal-content { background: white; padding: 24px; border-radius: 28px; width: 560px; max-width: 95%; box-shadow: 0 20px 35px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto; }
+        .modal-content h3 { margin-top: 0; }
+        .modal-buttons { display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px; }
+        .batch-table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+        .batch-table th, .batch-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .batch-table th { background: #f5f7fa; }
+        .remove-row { background: #fee2e2; color: #b91c1c; border: none; border-radius: 20px; padding: 4px 10px; cursor: pointer; }
+        .add-row-btn { background: #eef2ff; color: #2563eb; margin-top: 8px; width: auto; }
+        .show-inactive-row { margin-top: 12px; display: flex; justify-content: flex-end; }
+        @media (max-width: 780px) { body { padding: 16px; } .form-field { min-width: 100%; } .show-inactive-row { justify-content: flex-start; } }
+    </style>
+</head>
+<body>
+<div class="container">
+    <!-- 总部物料卡片 -->
+    <div class="card">
+        <div class="card-header">
+            <h2>🏭 总部物料</h2>
+            <div class="badge">进货/出货 | 单位自动记忆</div>
+            <button id="batchImportMaterialBtn" class="btn-excel btn-sm">📦 批量导入物料</button>
+        </div>
+        <div class="form-grid">
+            <div class="form-field"><label>📅 业务日期</label><input type="date" id="recordDate" required></div>
+            <div class="form-field"><label>📦 物料名称</label><input type="text" id="materialName" list="materialNameList" placeholder="例: 电缆/钢板" autocomplete="off"><datalist id="materialNameList"></datalist></div>
+            <div class="form-field"><label>📏 规格型号</label><input type="text" id="materialSpec" list="specDatalist" placeholder="选择或输入规格" autocomplete="off"><datalist id="specDatalist"></datalist></div>
+            <div class="form-field"><label>📐 单位</label><input type="text" id="materialUnit" placeholder="个/米/千克" value="个"></div>
+            <div class="form-field"><label>🔄 业务类型</label><select id="transType"><option value="in">📥 进货</option><option value="out">📤 出货</option></select></div>
+            <div class="form-field"><label>🔢 数量</label><input type="number" id="quantity" min="0.01" step="any" placeholder="正数" value="1"></div>
+        </div>
+        <div class="action-buttons">
+            <button id="cancelEditBtn" class="btn-outline btn-sm" style="display:none;">✖️ 取消编辑</button>
+            <button id="submitBtn" style="margin-top: 0;">➕ 添加记录</button>
+            <button id="resetSampleBtn" class="btn-outline btn-sm">📋 加载示例数据</button>
+            <button id="clearAllBtn" class="btn-outline btn-sm">🗑️ 清空所有数据</button>
+        </div>
+        <div class="info-note">✅ <strong>业务规则：</strong> “进货”增加库存，“出货”减少库存。<br>📌 选择物料名称+规格后，单位会自动记忆并填充；也可手动修改并保存为新规格的单位。</div>
+    </div>
+
+    <!-- 客户信息管理卡片 -->
+    <div class="card">
+        <div class="card-header">
+            <h2>👥 客户信息管理</h2>
+            <div class="badge">独立建档</div>
+            <button id="exportCustomerExcelBtn" class="btn-excel btn-sm">📎 导出客户Excel</button>
+        </div>
+        <div class="form-grid" style="align-items: center;">
+            <div class="form-field"><label>📅 建档日期</label><input type="date" id="customerDate" value=""></div>
+            <div class="form-field"><label>客户名称</label><input type="text" id="newCustomerName" placeholder="客户全称"></div>
+            <div class="form-field"><label>联系电话</label><input type="text" id="newCustomerPhone" placeholder="电话"></div>
+            <div class="form-field"><label>地址</label><input type="text" id="newCustomerAddress" placeholder="地址"></div>
+            <div class="form-field" style="flex:0.5;"><button id="addCustomerBtn" style="margin-top:22px;">➕ 添加客户</button></div>
+        </div>
+        <div class="table-wrapper"><table id="customerTable"><thead><tr><th>建档日期</th><th>客户名称</th><th>联系电话</th><th>地址</th><th>操作</th></tr></thead><tbody id="customerTbody"><tr><td colspan="5" class="empty-message">暂无客户，请添加客户信息</td></tr></tbody></table></div>
+        <div class="info-note">💡 点击“批量发货”可一次性为该客户添加多笔出库记录（支持逐行添加或导入/导出 Excel 模板）。</div>
+    </div>
+
+    <!-- 出入库明细流水 -->
+    <div class="card">
+        <div class="card-header"><h2>📋 出入库明细流水 (总部)</h2><div class="flex-between"><div class="badge"></div><button id="exportExcelBtn" class="btn-excel btn-sm">📎 导出Excel流水明细</button></div></div>
+        <div class="table-wrapper"><table id="recordsTable"><thead><tr><th>日期</th><th>物料名称</th><th>规格</th><th>单位</th><th>业务类型</th><th>数量</th><th>客户/备注</th><th>联系电话</th><th>地址</th>}</thead><tbody id="recordsTbody"><tr><td colspan="9" class="empty-message">暂无记录，请添加入库或发货记录 ➕</td></tr></tbody></table></div>
+    </div>
+
+    <!-- 实时剩余库存总览 -->
+    <div class="card">
+        <div class="card-header"><h2>📊 实时剩余库存总览 (总部仓库)</h2><div class="badge"></div></div>
+        <div class="table-wrapper"><table id="inventoryTable"><thead><tr><th>物料名称</th><th>规格型号</th><th>单位</th><th>累计进货</th><th>累计出货</th><th>📌 总部剩余库存</th><th>状态</th><th>操作</th>}</thead><tbody id="inventoryTbody"><td><td colspan="8" class="empty-message">暂无库存数据，请添加总部进货记录</td></tr></tbody></table></div>
+        <div class="show-inactive-row"><label style="display: flex; align-items: center; gap: 6px; font-size:0.75rem;"><input type="checkbox" id="showInactiveCheckbox"> 显示已停用物料</label></div>
+        <div class="info-note">✏️ 点击“编辑物料”可修改名称、规格、单位，并可直接输入新的“当前库存”数值（系统自动生成调整记录，支持填写备注）。<br>🗑️ “停用物料”仅隐藏，不删除流水，可勾选“显示已停用物料”查看并恢复。</div>
+    </div>
+    <footer>✓ 所有数据自动保存至 Supabase 云端，多人实时同步。物料流水与客户信息独立管理，库存实时重算。</footer>
+</div>
+
+<!-- 批量导入物料模态框 -->
+<div id="batchImportModal" class="modal"><div class="modal-content"><h3>📦 批量导入物料</h3><div class="flex-between" style="margin-bottom:16px;"><button id="downloadMaterialTemplateBtn" class="btn-outline btn-sm">📎 下载模板 Excel</button><label style="display:flex; gap:8px; align-items:center;"><span>导入 Excel:</span><input type="file" id="uploadMaterialExcel" accept=".xlsx, .xls, .csv" style="width:auto;"></label></div><div class="info-note" style="margin-bottom:12px;">模板包含列：物料名称、规格型号、单位、初始库存数量。<br>导入后将为每个物料生成一条“进货”记录，库存自动累加；若物料已存在，则增加库存。</div><div class="modal-buttons"><button id="closeImportModalBtn" class="btn-outline">关闭</button></div></div></div>
+
+<!-- 编辑客户模态框 -->
+<div id="editCustomerModal" class="modal"><div class="modal-content"><h3>编辑客户信息</h3><div class="form-field" style="margin-bottom:12px;"><label>客户名称</label><input type="text" id="editCustomerName"></div><div class="form-field" style="margin-bottom:12px;"><label>联系电话</label><input type="text" id="editCustomerPhone"></div><div class="form-field" style="margin-bottom:12px;"><label>地址</label><input type="text" id="editCustomerAddress"></div><div class="modal-buttons"><button id="saveCustomerEdit" class="btn-excel">保存</button><button id="cancelCustomerEdit" class="btn-outline">取消</button></div></div></div>
+
+<!-- 编辑物料模态框 -->
+<div id="editMaterialModal" class="modal"><div class="modal-content"><h3>编辑物料信息</h3><div class="form-field" style="margin-bottom:12px;"><label>物料名称</label><input type="text" id="editMaterialName"></div><div class="form-field" style="margin-bottom:12px;"><label>规格型号</label><input type="text" id="editMaterialSpec"></div><div class="form-field" style="margin-bottom:12px;"><label>单位</label><input type="text" id="editMaterialUnit"></div><div class="form-field" style="margin-bottom:12px;"><label>当前库存 (新数值)</label><input type="number" id="editMaterialStock" step="any" placeholder="输入调整后的库存数量"></div><div class="form-field" style="margin-bottom:12px;"><label>调整原因 (备注)</label><input type="text" id="editMaterialRemark" placeholder="例如：盘盈/盘亏/修正"></div><div class="info-note" style="margin-bottom:8px;">💡 修改“当前库存”后，系统将自动生成“进货”或“出货”记录来调整差额，备注会显示在流水客户栏。</div><div class="modal-buttons"><button id="saveMaterialEdit" class="btn-excel">保存</button><button id="cancelMaterialEdit" class="btn-outline">取消</button></div></div></div>
+
+<!-- 批量发货模态框 -->
+<div id="batchShipModal" class="modal"><div class="modal-content"><h3>📦 批量发货</h3><div id="batchCustomerInfo" style="background:#f5f7fa; padding:8px; border-radius:12px; margin-bottom:16px;"></div><div class="flex-between" style="margin-bottom:12px;"><button id="downloadTemplateBtn" class="btn-outline btn-sm">📎 下载 Excel 模板</button><label style="display:flex; gap:8px; align-items:center;"><span>导入 Excel:</span><input type="file" id="uploadExcelInput" accept=".xlsx, .xls, .csv" style="width:auto;"></label></div><table class="batch-table" id="batchItemsTable"><thead><tr><th>物料名称</th><th>规格型号</th><th>数量</th><th style="width:50px"></th>}</thead><tbody id="batchItemsTbody"></tbody></table><button id="addBatchRowBtn" class="add-row-btn">➕ 添加一行</button><div class="modal-buttons"><button id="confirmBatchShipBtn" class="btn-excel">确认批量发货</button><button id="cancelBatchShipBtn" class="btn-outline">取消</button></div></div></div>
+
+<script>
+    // ======================= Supabase 配置 =======================
+    // 请替换为您的 Supabase 项目 URL 和 anon key
+    const SUPABASE_URL = 'https://sezkshxsgqxmrarburux.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNlemtzaHhzZ3F4bXJhcmJ1cnV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4MzU4MDQsImV4cCI6MjA5MjQxMTgwNH0.kMSgDwBwMvXW_cyk0PHjUMRsE2NoY4zPQZ2He9KgWOg';
+    const supabase = supabaseJs.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // ======================= 全局状态 =======================
+    let records = [];
+    let customers = [];
+    let materialsMeta = new Map(); // key: "物料名|规格", value: { active, unit }
+    let editingId = null;
+    let editingCustomerId = null;
+    let editingMaterialKey = null;
+    let currentBatchCustomer = null;
+    let showInactive = false;
+
+    // DOM 元素
+    const recordDate = document.getElementById('recordDate');
+    const materialName = document.getElementById('materialName');
+    const materialSpec = document.getElementById('materialSpec');
+    const materialUnit = document.getElementById('materialUnit');
+    const transType = document.getElementById('transType');
+    const quantityInput = document.getElementById('quantity');
+    const submitBtn = document.getElementById('submitBtn');
+    const cancelEditBtn = document.getElementById('cancelEditBtn');
+    const exportExcelBtn = document.getElementById('exportExcelBtn');
+    const exportCustomerExcelBtn = document.getElementById('exportCustomerExcelBtn');
+    const resetSampleBtn = document.getElementById('resetSampleBtn');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+    const recordsTbody = document.getElementById('recordsTbody');
+    const inventoryTbody = document.getElementById('inventoryTbody');
+    const materialNameList = document.getElementById('materialNameList');
+    const specDatalist = document.getElementById('specDatalist');
+    const customerDate = document.getElementById('customerDate');
+    const newCustomerName = document.getElementById('newCustomerName');
+    const newCustomerPhone = document.getElementById('newCustomerPhone');
+    const newCustomerAddress = document.getElementById('newCustomerAddress');
+    const addCustomerBtn = document.getElementById('addCustomerBtn');
+    const customerTbody = document.getElementById('customerTbody');
+    const showInactiveCheckbox = document.getElementById('showInactiveCheckbox');
+    // 批量导入物料
+    const batchImportMaterialBtn = document.getElementById('batchImportMaterialBtn');
+    const batchImportModal = document.getElementById('batchImportModal');
+    const downloadMaterialTemplateBtn = document.getElementById('downloadMaterialTemplateBtn');
+    const uploadMaterialExcel = document.getElementById('uploadMaterialExcel');
+    const closeImportModalBtn = document.getElementById('closeImportModalBtn');
+    // 其他模态框
+    const editModal = document.getElementById('editCustomerModal');
+    const editCustomerName = document.getElementById('editCustomerName');
+    const editCustomerPhone = document.getElementById('editCustomerPhone');
+    const editCustomerAddress = document.getElementById('editCustomerAddress');
+    const saveCustomerEdit = document.getElementById('saveCustomerEdit');
+    const cancelCustomerEdit = document.getElementById('cancelCustomerEdit');
+    const editMaterialModal = document.getElementById('editMaterialModal');
+    const editMaterialNameInput = document.getElementById('editMaterialName');
+    const editMaterialSpecInput = document.getElementById('editMaterialSpec');
+    const editMaterialUnitInput = document.getElementById('editMaterialUnit');
+    const editMaterialStockInput = document.getElementById('editMaterialStock');
+    const editMaterialRemarkInput = document.getElementById('editMaterialRemark');
+    const saveMaterialEdit = document.getElementById('saveMaterialEdit');
+    const cancelMaterialEdit = document.getElementById('cancelMaterialEdit');
+    const batchShipModal = document.getElementById('batchShipModal');
+    const batchCustomerInfo = document.getElementById('batchCustomerInfo');
+    const batchItemsTbody = document.getElementById('batchItemsTbody');
+    const addBatchRowBtn = document.getElementById('addBatchRowBtn');
+    const confirmBatchShipBtn = document.getElementById('confirmBatchShipBtn');
+    const cancelBatchShipBtn = document.getElementById('cancelBatchShipBtn');
+    const downloadTemplateBtn = document.getElementById('downloadTemplateBtn');
+    const uploadExcelInput = document.getElementById('uploadExcelInput');
+
+    // ========== 辅助函数 ==========
+    function getStockKey(materialName, materialSpec) { return `${materialName}|${materialSpec}`; }
+    function escapeHtml(str) { if(!str) return ''; return str.replace(/[&<>]/g, m => m === '&' ? '&amp;' : m === '<' ? '&lt;' : '&gt;'); }
+
+    // 加载所有数据
+    async function loadAllData() {
+        try {
+            const [recordsRes, customersRes, metaRes] = await Promise.all([
+                supabase.from('records').select('*').order('date', { ascending: true }),
+                supabase.from('customers').select('*').order('date', { ascending: true }),
+                supabase.from('materials_meta').select('*')
+            ]);
+            if (recordsRes.error) throw recordsRes.error;
+            if (customersRes.error) throw customersRes.error;
+            if (metaRes.error) throw metaRes.error;
+            records = recordsRes.data || [];
+            customers = customersRes.data || [];
+            materialsMeta.clear();
+            (metaRes.data || []).forEach(item => {
+                materialsMeta.set(item.key, { active: item.active, unit: item.unit });
+            });
+            // 同步缺失的物料元数据（基于现有记录）
+            for (let rec of records) {
+                const key = getStockKey(rec.material_name, rec.material_spec);
+                if (!materialsMeta.has(key)) {
+                    materialsMeta.set(key, { active: true, unit: rec.unit });
+                }
+            }
+            refreshAllUI();
+        } catch (err) {
+            console.error('加载数据失败:', err);
+            alert('加载数据失败，请检查网络或 Supabase 配置。');
+        }
+    }
+
+    // 保存记录（增、删、改统一使用 API）
+    async function addRecordToDB(record) {
+        const newId = Date.now() + Math.random() * 10000;
+        const dbRecord = {
+            id: newId,
+            date: record.date,
+            material_name: record.materialName,
+            material_spec: record.materialSpec,
+            unit: record.unit,
+            type: record.type,
+            quantity: record.quantity,
+            customer_name: record.customerName,
+            customer_phone: record.customerPhone,
+            customer_address: record.customerAddress
+        };
+        const { error } = await supabase.from('records').insert(dbRecord);
+        if (error) throw error;
+        // 更新物料元数据
+        const key = getStockKey(record.materialName, record.materialSpec);
+        if (!materialsMeta.has(key)) {
+            await supabase.from('materials_meta').insert({ key, active: true, unit: record.unit });
+        } else {
+            const existing = materialsMeta.get(key);
+            if (existing.unit !== record.unit) {
+                await supabase.from('materials_meta').update({ unit: record.unit }).eq('key', key);
+            }
+        }
+        return newId;
+    }
+
+    async function updateRecordInDB(oldId, newRecord) {
+        const { error } = await supabase.from('records').update({
+            date: newRecord.date,
+            material_name: newRecord.materialName,
+            material_spec: newRecord.materialSpec,
+            unit: newRecord.unit,
+            type: newRecord.type,
+            quantity: newRecord.quantity,
+            customer_name: newRecord.customerName,
+            customer_phone: newRecord.customerPhone,
+            customer_address: newRecord.customerAddress
+        }).eq('id', oldId);
+        if (error) throw error;
+        // 更新物料元数据
+        const key = getStockKey(newRecord.materialName, newRecord.materialSpec);
+        const { data: existingMeta } = await supabase.from('materials_meta').select('*').eq('key', key);
+        if (!existingMeta || existingMeta.length === 0) {
+            await supabase.from('materials_meta').insert({ key, active: true, unit: newRecord.unit });
+        } else if (existingMeta[0].unit !== newRecord.unit) {
+            await supabase.from('materials_meta').update({ unit: newRecord.unit }).eq('key', key);
+        }
+    }
+
+    async function deleteRecordFromDB(id) {
+        const { error } = await supabase.from('records').delete().eq('id', id);
+        if (error) throw error;
+    }
+
+    async function addCustomerToDB(customer) {
+        const newId = Date.now() + Math.random() * 10000;
+        const { error } = await supabase.from('customers').insert({
+            id: newId,
+            date: customer.date,
+            name: customer.name,
+            phone: customer.phone,
+            address: customer.address
+        });
+        if (error) throw error;
+        return newId;
+    }
+
+    async function updateCustomerInDB(id, customer) {
+        const { error } = await supabase.from('customers').update({
+            date: customer.date,
+            name: customer.name,
+            phone: customer.phone,
+            address: customer.address
+        }).eq('id', id);
+        if (error) throw error;
+    }
+
+    async function deleteCustomerFromDB(id) {
+        const { error } = await supabase.from('customers').delete().eq('id', id);
+        if (error) throw error;
+    }
+
+    async function updateMaterialMetaInDB(key, active, unit) {
+        const { error } = await supabase.from('materials_meta').upsert({ key, active, unit }, { onConflict: 'key' });
+        if (error) throw error;
+    }
+
+    // 实时订阅
+    function setupRealtime() {
+        const recordsChannel = supabase.channel('records-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'records' }, () => loadAllData())
+            .subscribe();
+        const customersChannel = supabase.channel('customers-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, () => loadAllData())
+            .subscribe();
+        const metaChannel = supabase.channel('meta-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'materials_meta' }, () => loadAllData())
+            .subscribe();
+    }
+
+    // ========== 业务逻辑（保持原有，但调用云端 API） ==========
+    function getCurrentStock(materialName, materialSpec, excludeId = null) {
+        let stock = 0;
+        for (let r of records) {
+            if (excludeId !== null && r.id === excludeId) continue;
+            if (r.material_name === materialName && r.material_spec === materialSpec) {
+                if (r.type === 'in') stock += r.quantity;
+                else if (r.type === 'out') stock -= r.quantity;
+            }
+        }
+        return stock;
+    }
+
+    function getMaterialMeta(materialName, materialSpec) {
+        const key = getStockKey(materialName, materialSpec);
+        if (materialsMeta.has(key)) return materialsMeta.get(key);
+        return { active: true, unit: '个' };
+    }
+
+    async function addRecord(record) {
+        if (record.type === 'out' && getCurrentStock(record.materialName, record.materialSpec) < record.quantity) {
+            alert(`库存不足！当前库存 ${getCurrentStock(record.materialName, record.materialSpec)} ${record.unit}`);
+            return false;
+        }
+        await addRecordToDB(record);
+        return true;
+    }
+
+    async function updateRecord(oldId, newRecord) {
+        if (newRecord.type === 'out' && getCurrentStock(newRecord.materialName, newRecord.materialSpec, oldId) < newRecord.quantity) {
+            alert(`库存不足！修改后库存不足，无法出货 ${newRecord.quantity}。`);
+            return false;
+        }
+        await updateRecordInDB(oldId, newRecord);
+        return true;
+    }
+
+    async function deleteRecord(id) {
+        await deleteRecordFromDB(id);
+    }
+
+    function getFormRecord() {
+        let date = recordDate.value;
+        if (!date) { alert('请选择业务日期'); return null; }
+        const mName = materialName.value.trim();
+        if (!mName) { alert('请填写物料名称'); return null; }
+        const mSpec = materialSpec.value.trim() || "(未填规格)";
+        let unit = materialUnit.value.trim();
+        if (!unit) unit = '个';
+        const type = transType.value;
+        let quantity = parseFloat(quantityInput.value);
+        if (isNaN(quantity) || quantity <= 0) { alert('数量必须大于0'); return null; }
+        let custName = "", custPhone = "", custAddr = "";
+        if (type === 'out') {
+            custName = prompt("请输入客户名称", "散客");
+            if (!custName) custName = "散客";
+            const cust = customers.find(c => c.name === custName);
+            if (cust) { custPhone = cust.phone; custAddr = cust.address; }
+        } else if (type === 'in') {
+            custName = "总部进货";
+        }
+        return { date, materialName: mName, materialSpec: mSpec, unit, type, quantity, customerName: custName, customerPhone: custPhone, customerAddress: custAddr };
+    }
+
+    async function onSubmit() {
+        const fd = getFormRecord();
+        if (!fd) return;
+        if (editingId !== null) {
+            if (await updateRecord(editingId, fd)) {
+                resetEditMode();
+            }
+        } else {
+            if (await addRecord(fd)) {
+                materialName.value = ''; materialSpec.value = ''; materialUnit.value = '个'; quantityInput.value = '1'; setDefaultDate();
+                materialName.focus();
+            }
+        }
+    }
+
+    function resetEditMode() {
+        editingId = null;
+        submitBtn.textContent = '➕ 添加记录';
+        cancelEditBtn.style.display = 'none';
+        clearForm();
+    }
+    function clearForm() {
+        materialName.value = ''; materialSpec.value = ''; materialUnit.value = '个'; transType.value = 'in'; quantityInput.value = '1';
+        setDefaultDate();
+    }
+    function setDefaultDate() { recordDate.value = new Date().toISOString().slice(0,10); }
+
+    async function editRecordById(id) {
+        const rec = records.find(r => r.id === id);
+        if (!rec) return;
+        editingId = id;
+        recordDate.value = rec.date;
+        materialName.value = rec.material_name;
+        materialSpec.value = rec.material_spec;
+        materialUnit.value = rec.unit;
+        transType.value = rec.type;
+        quantityInput.value = rec.quantity;
+        submitBtn.textContent = '✏️ 更新记录';
+        cancelEditBtn.style.display = 'inline-block';
+        document.querySelector('.card').scrollIntoView({ behavior: 'smooth' });
+        updateSpecDatalist();
+    }
+
+    async function deleteRecordById(id) {
+        if (confirm('删除此记录将永久移除，不可恢复。确定吗？')) {
+            await deleteRecord(id);
+        }
+    }
+
+    // 渲染表格（纯展示，无编辑删除按钮）
+    function renderRecordsTable() {
+        if (!recordsTbody) return;
+        if (records.length === 0) { recordsTbody.innerHTML = '<tr><td colspan="9" class="empty-message">暂无记录，请添加入库或发货记录 ➕</td></tr>'; return; }
+        let html = '';
+        for (let rec of records) {
+            let typeLabel = rec.type === 'in' ? '进货' : '出货';
+            let badgeClass = rec.type === 'in' ? 'badge-in' : 'badge-out';
+            let qtyDisplay = (rec.type === 'in' ? '+' : '-') + rec.quantity;
+            html += `<tr>
+                <td>${escapeHtml(rec.date)}</td>
+                <td>${escapeHtml(rec.material_name)}</td>
+                <td>${escapeHtml(rec.material_spec)}</td>
+                <td>${escapeHtml(rec.unit)}</td>
+                <td><span class="badge-type ${badgeClass}">${typeLabel}</span></td>
+                <td>${qtyDisplay}</td>
+                <td>${escapeHtml(rec.customer_name)}</td>
+                <td>${escapeHtml(rec.customer_phone)}</td>
+                <td>${escapeHtml(rec.customer_address)}</td>
+            </tr>`;
+        }
+        recordsTbody.innerHTML = html;
+    }
+
+    // 库存总览渲染
+    function renderInventorySummary() {
+        const stockMap = new Map();
+        for (let rec of records) {
+            const key = getStockKey(rec.material_name, rec.material_spec);
+            if (!stockMap.has(key)) {
+                stockMap.set(key, { materialName: rec.material_name, spec: rec.material_spec, unit: rec.unit, inTotal: 0, outTotal: 0, stock: 0 });
+            }
+            const entry = stockMap.get(key);
+            if (rec.type === 'in') { entry.inTotal += rec.quantity; entry.stock += rec.quantity; }
+            else if (rec.type === 'out') { entry.outTotal += rec.quantity; entry.stock -= rec.quantity; }
+        }
+        const filtered = Array.from(stockMap.entries()).filter(([key]) => {
+            const active = materialsMeta.get(key)?.active !== false;
+            return showInactive || active;
+        });
+        if (filtered.length === 0) { inventoryTbody.innerHTML = '<tr><td colspan="8" class="empty-message">暂无库存数据</td></tr>'; return; }
+        let html = '';
+        for (let [key, entry] of filtered) {
+            const isActive = materialsMeta.get(key)?.active !== false;
+            let stockClass = 'stock-high', status = '充足';
+            if (entry.stock <= 0) { stockClass = 'stock-low'; status = '缺货'; }
+            else if (entry.stock < 50) { stockClass = 'stock-low'; status = '偏低'; }
+            if (!isActive) status = '已停用';
+            html += `<tr>
+                <td>${escapeHtml(entry.materialName)}</td>
+                <td>${escapeHtml(entry.spec)}</td>
+                <td>${escapeHtml(entry.unit)}</td>
+                <td>${entry.inTotal}</td>
+                <td>${entry.outTotal}</td>
+                <td class="stock-cell ${stockClass}">${entry.stock}</td>
+                <td><span class="badge">${status}</span></td>
+                <td>
+                    <button class="action-btn edit-material-btn" data-key="${escapeHtml(key)}" data-name="${escapeHtml(entry.materialName)}" data-spec="${escapeHtml(entry.spec)}" data-unit="${escapeHtml(entry.unit)}" data-stock="${entry.stock}">✏️ 编辑物料</button>
+                    ${isActive ? `<button class="action-btn delete-material-btn" data-key="${escapeHtml(key)}" style="background:#fee2e2;">⛔ 停用</button>` : `<button class="action-btn restore-material-btn" data-key="${escapeHtml(key)}" style="background:#e6f7e6;">🔄 恢复</button>`}
+                </td>
+            </tr>`;
+        }
+        inventoryTbody.innerHTML = html;
+        // 绑定事件
+        document.querySelectorAll('.edit-material-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const key = btn.dataset.key;
+                const name = btn.dataset.name, spec = btn.dataset.spec, unit = btn.dataset.unit, stock = parseFloat(btn.dataset.stock);
+                openEditMaterialModal(key, name, spec, unit, stock);
+            });
+        });
+        document.querySelectorAll('.delete-material-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const key = btn.dataset.key;
+                if (confirm(`停用物料“${key.replace('|', ' 规格:')}”？流水保留，可恢复。`)) {
+                    await updateMaterialMetaInDB(key, false, materialsMeta.get(key).unit);
+                    await loadAllData();
+                }
+            });
+        });
+        document.querySelectorAll('.restore-material-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const key = btn.dataset.key;
+                await updateMaterialMetaInDB(key, true, materialsMeta.get(key).unit);
+                await loadAllData();
+            });
+        });
+    }
+
+    async function openEditMaterialModal(key, name, spec, unit, currentStock) {
+        editingMaterialKey = key;
+        editMaterialNameInput.value = name;
+        editMaterialSpecInput.value = spec;
+        editMaterialUnitInput.value = unit;
+        editMaterialStockInput.value = currentStock;
+        editMaterialRemarkInput.value = '';
+        editMaterialModal.style.display = 'flex';
+    }
+    async function saveMaterialEditHandler() {
+        if (!editingMaterialKey) return;
+        const newName = editMaterialNameInput.value.trim();
+        const newSpec = editMaterialSpecInput.value.trim() || "(未填规格)";
+        const newUnit = editMaterialUnitInput.value.trim() || '个';
+        const newStock = parseFloat(editMaterialStockInput.value);
+        const remark = editMaterialRemarkInput.value.trim();
+        if (isNaN(newStock)) { alert('请输入有效的库存数值'); return; }
+        const [oldName, oldSpec] = editingMaterialKey.split('|');
+        const oldStock = getCurrentStock(oldName, oldSpec);
+        // 更新物料元数据
+        const newKey = getStockKey(newName, newSpec);
+        await updateMaterialMetaInDB(newKey, true, newUnit);
+        if (editingMaterialKey !== newKey) {
+            await updateMaterialMetaInDB(editingMaterialKey, false, materialsMeta.get(editingMaterialKey).unit);
+        }
+        // 更新所有相关记录的名称、规格、单位
+        for (let rec of records) {
+            if (rec.material_name === oldName && rec.material_spec === oldSpec) {
+                await supabase.from('records').update({
+                    material_name: newName,
+                    material_spec: newSpec,
+                    unit: newUnit
+                }).eq('id', rec.id);
+            }
+        }
+        // 处理库存调整
+        const diff = newStock - oldStock;
+        if (Math.abs(diff) > 0.0001) {
+            const adjustType = diff > 0 ? 'in' : 'out';
+            const adjustQty = Math.abs(diff);
+            const adjustRecord = {
+                id: Date.now() + Math.random() * 10000,
+                date: new Date().toISOString().slice(0,10),
+                materialName: newName,
+                materialSpec: newSpec,
+                unit: newUnit,
+                type: adjustType,
+                quantity: adjustQty,
+                customerName: remark ? `库存调整：${remark}` : (adjustType === 'in' ? '盘盈调整' : '盘亏调整'),
+                customerPhone: '',
+                customerAddress: ''
+            };
+            await addRecordToDB(adjustRecord);
+            alert(`库存已${diff > 0 ? '增加' : '减少'} ${adjustQty} ${newUnit}，已生成${adjustType === 'in' ? '进货' : '出货'}记录。`);
+        }
+        await loadAllData();
+        closeEditMaterialModal();
+    }
+
+    // 客户管理（调用云端API）
+    async function addCustomer() {
+        const date = customerDate.value || new Date().toISOString().slice(0,10);
+        const name = newCustomerName.value.trim();
+        if (!name) { alert('客户名称不能为空'); return; }
+        await addCustomerToDB({ date, name, phone: newCustomerPhone.value.trim(), address: newCustomerAddress.value.trim() });
+        newCustomerName.value = ''; newCustomerPhone.value = ''; newCustomerAddress.value = '';
+        customerDate.value = new Date().toISOString().slice(0,10);
+        await loadAllData();
+    }
+    async function updateCustomer(id, name, phone, address) {
+        await updateCustomerInDB(id, { date: customers.find(c => c.id === id).date, name, phone, address });
+        await loadAllData();
+    }
+    async function deleteCustomer(id) {
+        if (confirm('删除客户不会影响已有物料流水记录，确定删除吗？')) {
+            await deleteCustomerFromDB(id);
+            await loadAllData();
+        }
+    }
+    function renderCustomerTable() {
+        if (!customerTbody) return;
+        if (customers.length === 0) { customerTbody.innerHTML = '<tr><td colspan="5" class="empty-message">暂无客户，请添加客户信息</td></tr>'; return; }
+        let html = '';
+        for (let c of customers) {
+            html += `<tr>
+                <td>${escapeHtml(c.date)}</td>
+                <td><strong>${escapeHtml(c.name)}</strong></td>
+                <td>${escapeHtml(c.phone)}</td>
+                <td>${escapeHtml(c.address)}</td>
+                <td>
+                    <button class="action-btn edit-customer-btn" data-id="${c.id}" data-name="${escapeHtml(c.name)}" data-phone="${escapeHtml(c.phone)}" data-address="${escapeHtml(c.address)}">✏️ 编辑</button>
+                    <button class="action-btn delete-customer-btn" data-id="${c.id}" style="background:#fee2e2;">🗑️ 删除</button>
+                    <button class="action-btn ship-btn" data-id="${c.id}" data-name="${escapeHtml(c.name)}" data-phone="${escapeHtml(c.phone)}" data-address="${escapeHtml(c.address)}">📦 批量发货</button>
+                </td>
+            </tr>`;
+        }
+        customerTbody.innerHTML = html;
+        document.querySelectorAll('.edit-customer-btn').forEach(btn => btn.addEventListener('click', () => openEditCustomerModal(Number(btn.dataset.id), btn.dataset.name, btn.dataset.phone, btn.dataset.address)));
+        document.querySelectorAll('.delete-customer-btn').forEach(btn => btn.addEventListener('click', () => deleteCustomer(Number(btn.dataset.id))));
+        document.querySelectorAll('.ship-btn').forEach(btn => btn.addEventListener('click', () => openBatchShipModal({ id: Number(btn.dataset.id), name: btn.dataset.name, phone: btn.dataset.phone, address: btn.dataset.address })));
+    }
+    function openEditCustomerModal(id, name, phone, address) {
+        editingCustomerId = id;
+        editCustomerName.value = name;
+        editCustomerPhone.value = phone;
+        editCustomerAddress.value = address;
+        editModal.style.display = 'flex';
+    }
+    async function saveCustomerEditHandler() {
+        if (!editingCustomerId) return;
+        const newName = editCustomerName.value.trim();
+        if (!newName) { alert('客户名称不能为空'); return; }
+        await updateCustomer(editingCustomerId, newName, editCustomerPhone.value.trim(), editCustomerAddress.value.trim());
+        closeEditModal();
+    }
+    function closeEditModal() { editModal.style.display = 'none'; editingCustomerId = null; }
+
+    // 批量导入物料（调用云端API）
+    async function importMaterialExcel(file) {
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
+            if (!rows || rows.length < 2) { alert('Excel 至少包含标题行和一行数据'); return; }
+            let successCount = 0;
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                if (row.length < 4) continue;
+                let material = (row[0] || '').toString().trim();
+                let spec = (row[1] || '').toString().trim();
+                let unit = (row[2] || '').toString().trim();
+                let initQty = parseFloat(row[3]);
+                if (!material || isNaN(initQty) || initQty <= 0) continue;
+                if (!unit) unit = '个';
+                const newRecord = {
+                    date: new Date().toISOString().slice(0,10),
+                    materialName: material,
+                    materialSpec: spec || "(未填规格)",
+                    unit: unit,
+                    type: 'in',
+                    quantity: initQty,
+                    customerName: '系统批量导入',
+                    customerPhone: '',
+                    customerAddress: ''
+                };
+                await addRecordToDB(newRecord);
+                successCount++;
+            }
+            if (successCount > 0) {
+                alert(`批量导入完成！成功导入 ${successCount} 个物料。`);
+                await loadAllData();
+            } else {
+                alert('没有有效的物料数据，请检查模板格式。');
+            }
+            batchImportModal.style.display = 'none';
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    // 批量发货（调用云端API）
+    async function confirmBatchShip() {
+        if (!currentBatchCustomer) return;
+        const items = [];
+        for (let row of batchItemsTbody.querySelectorAll('tr')) {
+            const mat = row.querySelector('.batch-material').value.trim();
+            const spec = row.querySelector('.batch-spec').value.trim() || "(未填规格)";
+            const qty = parseFloat(row.querySelector('.batch-qty').value);
+            if (!mat) { alert('物料名称不能为空'); return; }
+            if (isNaN(qty) || qty <= 0) { alert('数量必须大于0'); return; }
+            items.push({ materialName: mat, materialSpec: spec, quantity: qty });
+        }
+        if (items.length === 0) return;
+        for (let it of items) {
+            const curStock = getCurrentStock(it.materialName, it.materialSpec);
+            if (curStock < it.quantity) {
+                alert(`库存不足！${it.materialName} ${it.materialSpec} 当前库存 ${curStock}，无法出货 ${it.quantity}`);
+                return;
+            }
+        }
+        for (let it of items) {
+            const unit = getMaterialMeta(it.materialName, it.materialSpec).unit;
+            const newRecord = {
+                date: new Date().toISOString().slice(0,10),
+                materialName: it.materialName,
+                materialSpec: it.materialSpec,
+                unit: unit,
+                type: 'out',
+                quantity: it.quantity,
+                customerName: currentBatchCustomer.name,
+                customerPhone: currentBatchCustomer.phone,
+                customerAddress: currentBatchCustomer.address
+            };
+            await addRecordToDB(newRecord);
+        }
+        await loadAllData();
+        batchShipModal.style.display = 'none';
+        alert(`成功为客户“${currentBatchCustomer.name}”批量发货 ${items.length} 种物料。`);
+    }
+
+    // 导出功能（不变）
+    function exportToExcel() {
+        const headers = ['日期','物料名称','规格','单位','业务类型','数量','客户/备注','联系电话','地址'];
+        const data = records.map(r => [r.date, r.material_name, r.material_spec, r.unit, r.type==='in'?'进货':'出货', r.quantity, r.customer_name, r.customer_phone, r.customer_address]);
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '物料流水');
+        XLSX.writeFile(wb, '物料流水.xlsx');
+    }
+    function exportCustomersToExcel() {
+        const wsData = [['建档日期','客户名称','联系电话','地址'], ...customers.map(c=>[c.date,c.name,c.phone,c.address])];
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '客户信息');
+        XLSX.writeFile(wb, '客户信息.xlsx');
+    }
+
+    // 更新规格下拉和单位记忆
+    function updateSpecDatalist() {
+        const mat = materialName.value.trim();
+        if (!mat) { specDatalist.innerHTML = ''; materialUnit.value = '个'; return; }
+        const specs = [...new Set(records.filter(r => r.material_name === mat).map(r => r.material_spec))];
+        specDatalist.innerHTML = specs.map(s => `<option value="${escapeHtml(s)}">`).join('');
+        const spec = materialSpec.value.trim();
+        if (mat && spec) {
+            const meta = getMaterialMeta(mat, spec);
+            materialUnit.value = meta.unit;
+        } else {
+            materialUnit.value = '个';
+        }
+    }
+    function updateMaterialNameDatalist() {
+        const mats = [...new Set(records.map(r => r.material_name))];
+        materialNameList.innerHTML = mats.map(m => `<option value="${escapeHtml(m)}">`).join('');
+    }
+    materialName.addEventListener('input', updateSpecDatalist);
+    materialSpec.addEventListener('input', () => {
+        if (materialName.value && materialSpec.value) {
+            const meta = getMaterialMeta(materialName.value, materialSpec.value);
+            materialUnit.value = meta.unit;
+        }
+    });
+
+    function refreshAllUI() {
+        renderRecordsTable();
+        renderInventorySummary();
+        updateMaterialNameDatalist();
+        updateSpecDatalist();
+        renderCustomerTable();
+        if (editingId !== null && !records.find(r => r.id === editingId)) resetEditMode();
+    }
+
+    // 初始化示例数据（可选）
+    async function resetToSample() {
+        if (confirm('加载示例数据会覆盖当前所有数据，确定吗？')) {
+            // 清空现有数据
+            await supabase.from('records').delete().neq('id', 0);
+            await supabase.from('customers').delete().neq('id', 0);
+            await supabase.from('materials_meta').delete().neq('key', '');
+            const sampleRecords = [
+                { id: Date.now()+1, date: new Date(Date.now() - 86400000).toISOString().slice(0,10), material_name: "电力电缆", material_spec: "YJV 3*16", unit: "米", type: "in", quantity: 500, customer_name: "电缆供应商", customer_phone: "010-123456", customer_address: "北京" },
+                { id: Date.now()+2, date: new Date(Date.now() - 86400000).toISOString().slice(0,10), material_name: "不锈钢板", material_spec: "304 2.0mm", unit: "张", type: "in", quantity: 300, customer_name: "宏源钢铁", customer_phone: "0757-88889999", customer_address: "佛山" },
+                { id: Date.now()+3, date: new Date().toISOString().slice(0,10), material_name: "不锈钢板", material_spec: "304 2.0mm", unit: "张", type: "out", quantity: 120, customer_name: "南方制造厂", customer_phone: "13812345678", customer_address: "中山" },
+                { id: Date.now()+4, date: new Date().toISOString().slice(0,10), material_name: "六角螺栓", material_spec: "M12*60", unit: "个", type: "in", quantity: 2000, customer_name: "紧固件集团", customer_phone: "021-67891234", customer_address: "上海" }
+            ];
+            for (let rec of sampleRecords) {
+                await supabase.from('records').insert(rec);
+            }
+            const sampleCustomers = [
+                { id: Date.now()+100, date: "2025-01-10", name: "南方制造厂", phone: "13812345678", address: "中山市火炬区" },
+                { id: Date.now()+101, date: "2025-02-15", name: "宏达机械", phone: "13612345678", address: "东莞市长安镇" }
+            ];
+            for (let c of sampleCustomers) {
+                await supabase.from('customers').insert(c);
+            }
+            await loadAllData();
+        }
+    }
+    async function clearAllData() {
+        if (confirm('清空所有数据，不可撤销。确定？')) {
+            await supabase.from('records').delete().neq('id', 0);
+            await supabase.from('customers').delete().neq('id', 0);
+            await supabase.from('materials_meta').delete().neq('key', '');
+            await loadAllData();
+        }
+    }
+    function cancelEdit() { resetEditMode(); refreshAllUI(); }
+
+    // 批量发货辅助函数
+    function addBatchRow(material='', spec='', qty='') {
+        const row = document.createElement('tr');
+        row.innerHTML = `<td><input type="text" class="batch-material" list="batchMaterialList" value="${escapeHtml(material)}"></td>
+                         <td><input type="text" class="batch-spec" list="batchSpecList" value="${escapeHtml(spec)}"></td>
+                         <td><input type="number" class="batch-qty" step="any" value="${qty}"></td>
+                         <td><button class="remove-row">删除</button></td>`;
+        batchItemsTbody.appendChild(row);
+        row.querySelector('.remove-row').addEventListener('click', () => row.remove());
+        updateGlobalBatchDatalists();
+        const matInput = row.querySelector('.batch-material');
+        const specInput = row.querySelector('.batch-spec');
+        matInput.addEventListener('input', () => updateRowSpecDatalist(matInput, specInput));
+    }
+    function updateGlobalBatchDatalists() {
+        const mats = [...new Set(records.map(r => r.material_name))];
+        let list = document.getElementById('batchMaterialGlobalList');
+        if (list) list.remove();
+        list = document.createElement('datalist'); list.id = 'batchMaterialGlobalList';
+        mats.forEach(m => { let opt = document.createElement('option'); opt.value = m; list.appendChild(opt); });
+        document.body.appendChild(list);
+        document.querySelectorAll('.batch-material').forEach(inp => inp.setAttribute('list', 'batchMaterialGlobalList'));
+    }
+    function updateRowSpecDatalist(matInput, specInput) {
+        const mat = matInput.value.trim();
+        if (!mat) { specInput.setAttribute('list', ''); return; }
+        const specs = [...new Set(records.filter(r => r.material_name === mat).map(r => r.material_spec))];
+        let listId = `specList_${Date.now()}_${Math.random()}`;
+        let dl = document.createElement('datalist'); dl.id = listId;
+        specs.forEach(s => { let opt = document.createElement('option'); opt.value = s; dl.appendChild(opt); });
+        document.body.appendChild(dl);
+        specInput.setAttribute('list', listId);
+    }
+    function openBatchShipModal(customer) {
+        currentBatchCustomer = customer;
+        batchCustomerInfo.innerHTML = `<strong>客户：</strong> ${escapeHtml(customer.name)}<br><strong>电话：</strong> ${escapeHtml(customer.phone)}<br><strong>地址：</strong> ${escapeHtml(customer.address)}`;
+        batchItemsTbody.innerHTML = '';
+        addBatchRow();
+        batchShipModal.style.display = 'flex';
+    }
+    function downloadBatchTemplate() {
+        const template = [['物料名称', '规格型号', '数量'], ['不锈钢板', '304 2.0mm', 50], ['六角螺栓', 'M12*60', 200]];
+        const ws = XLSX.utils.aoa_to_sheet(template);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '批量发货模板');
+        XLSX.writeFile(wb, '批量发货模板.xlsx');
+    }
+    function importExcel(file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1, defval: "" });
+            if (!rows || rows.length < 2) { alert('Excel 至少包含标题行和一行数据'); return; }
+            batchItemsTbody.innerHTML = '';
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                if (row.length < 2) continue;
+                let material = (row[0] || '').toString().trim();
+                let spec = (row[1] || '').toString().trim();
+                let qty = parseFloat(row[2]);
+                if (material && !isNaN(qty) && qty > 0) {
+                    addBatchRow(material, spec, qty);
+                }
+            }
+            if (batchItemsTbody.children.length === 0) addBatchRow();
+            updateGlobalBatchDatalists();
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    // 事件绑定
+    showInactiveCheckbox.addEventListener('change', (e) => { showInactive = e.target.checked; renderInventorySummary(); });
+    addBatchRowBtn.addEventListener('click', () => addBatchRow());
+    confirmBatchShipBtn.addEventListener('click', confirmBatchShip);
+    cancelBatchShipBtn.addEventListener('click', () => batchShipModal.style.display = 'none');
+    downloadTemplateBtn.addEventListener('click', downloadBatchTemplate);
+    uploadExcelInput.addEventListener('change', (e) => { if(e.target.files[0]) importExcel(e.target.files[0]); e.target.value = ''; });
+    batchImportMaterialBtn.addEventListener('click', () => batchImportModal.style.display = 'flex');
+    closeImportModalBtn.addEventListener('click', () => batchImportModal.style.display = 'none');
+    downloadMaterialTemplateBtn.addEventListener('click', () => {
+        const template = [['物料名称', '规格型号', '单位', '初始库存数量'], ['不锈钢板', '304 2.0mm', '张', 100], ['六角螺栓', 'M12*60', '个', 500]];
+        const ws = XLSX.utils.aoa_to_sheet(template);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '批量导入物料模板');
+        XLSX.writeFile(wb, '批量导入物料模板.xlsx');
+    });
+    uploadMaterialExcel.addEventListener('change', (e) => { if(e.target.files[0]) importMaterialExcel(e.target.files[0]); e.target.value = ''; });
+    submitBtn.addEventListener('click', onSubmit);
+    cancelEditBtn.addEventListener('click', cancelEdit);
+    exportExcelBtn.addEventListener('click', exportToExcel);
+    exportCustomerExcelBtn.addEventListener('click', exportCustomersToExcel);
+    resetSampleBtn.addEventListener('click', resetToSample);
+    clearAllBtn.addEventListener('click', clearAllData);
+    addCustomerBtn.addEventListener('click', addCustomer);
+    saveCustomerEdit.addEventListener('click', saveCustomerEditHandler);
+    cancelCustomerEdit.addEventListener('click', closeEditModal);
+    saveMaterialEdit.addEventListener('click', saveMaterialEditHandler);
+    cancelMaterialEdit.addEventListener('click', () => editMaterialModal.style.display = 'none');
+    window.addEventListener('click', (e) => { if (e.target === editModal) closeEditModal(); if (e.target === editMaterialModal) editMaterialModal.style.display = 'none'; if (e.target === batchShipModal) batchShipModal.style.display = 'none'; if (e.target === batchImportModal) batchImportModal.style.display = 'none'; });
+    const inputs = [recordDate, materialName, materialSpec, materialUnit, transType, quantityInput];
+    inputs.forEach(inp => inp && inp.addEventListener('keypress', (e) => { if(e.key === 'Enter') { e.preventDefault(); onSubmit(); } }));
+
+    // 初始化
+    async function init() {
+        await loadAllData();
+        setDefaultDate();
+        customerDate.value = new Date().toISOString().slice(0,10);
+        setupRealtime();
+    }
+    init();
+</script>
+</body>
+</html>
